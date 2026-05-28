@@ -633,6 +633,8 @@
   <div class="quiz-section" id="quizSection" style="display:none"></div>
 </main>
 
+<script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js';</script>
 <script>
 /*!
 
@@ -730,14 +732,12 @@ async function generateQuiz() {
     let messages;
 
     if (ext === 'pdf') {
-      const base64 = await toBase64(currentFile);
+      const pdfText = await extractPdfText(currentFile);
+      if (!pdfText || pdfText.length < 50) throw new Error('Não foi possível extrair texto do PDF. Verifique se o arquivo tem conteúdo de texto.');
       setLoadingLabel('Gerando questões com IA...');
       messages = [{
         role: 'user',
-        content: [
-          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-          { type: 'text', text: buildPrompt(numQ, diff) }
-        ]
+        content: `Conteúdo extraído do PDF "${currentFile.name}":\n\n${pdfText}\n\n${buildPrompt(numQ, diff)}`
       }];
     } else {
       const pptxText = await extractPptxText(currentFile);
@@ -970,6 +970,19 @@ function resetQuiz() {
 }
 
 // UTILS
+async function extractPdfText(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items.map(item => item.str).join(' ');
+    text += `\n[Página ${i}]\n${pageText}\n`;
+  }
+  return text.trim();
+}
+
 function toBase64(file) {
   return new Promise((res, rej) => {
     const r = new FileReader();
